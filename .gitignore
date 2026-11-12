@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+node_modules/
+frontend/dist/
+.env
+*.egg-info/
+queueless_load_report.md
