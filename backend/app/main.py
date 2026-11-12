@@ -17,6 +17,7 @@ from app.container import build_container
 from app.core.config import Settings, get_settings
 from app.core.errors import DomainError
 from app.realtime.redis_listener import RedisEventListener
+from app.workers.no_show_sweeper import NoShowSweeper
 
 log = logging.getLogger("queueless")
 
@@ -40,6 +41,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             listener = RedisEventListener(settings.redis_url, container.hub)
             container.extras["listener"] = listener
             tasks.append(asyncio.create_task(listener.run(), name="redis-listener"))
+        if settings.enable_background_tasks:
+            sweeper = NoShowSweeper(container.uow, settings.sweeper_interval_sec)
+            tasks.append(asyncio.create_task(sweeper.run(), name="no-show-sweeper"))
         try:
             yield
         finally:
