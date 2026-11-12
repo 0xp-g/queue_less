@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Request, Response
 
-from app.api.deps import client_ip, get_container, get_current_staff
-from app.api.schemas import JoinIn
+from app.api.deps import client_ip, get_container, get_current_staff, get_optional_staff
+from app.api.schemas import CheckInIn, JoinIn
+from app.core.errors import InvalidToken
 
 router = APIRouter(prefix="/api", tags=["tickets"])
 
@@ -42,3 +43,23 @@ async def no_show(ticket_id: int, staff=Depends(get_current_staff), c=Depends(ge
 @router.post("/tickets/{ticket_id}/cancel")
 async def staff_cancel(ticket_id: int, staff=Depends(get_current_staff), c=Depends(get_container)):
     return await c.staff.cancel(staff, ticket_id)
+
+
+@router.post("/tickets/{ticket_id}/requeue")
+async def requeue(ticket_id: int, staff=Depends(get_current_staff), c=Depends(get_container)):
+    return await c.staff.requeue(staff, ticket_id)
+
+
+@router.post("/tickets/{ticket_id}/check-in")
+async def check_in(
+    ticket_id: int,
+    body: CheckInIn | None = None,
+    staff=Depends(get_optional_staff),
+    c=Depends(get_container),
+):
+    """Visitor: ticket token + rotating counter nonce (proves presence). Staff: bearer token."""
+    if staff is not None:
+        return await c.staff.check_in(staff, ticket_id)
+    if not body or not (body.token and body.counter_id and body.nonce):
+        raise InvalidToken("Scan the QR code shown at the counter to check in.")
+    return await c.tickets.check_in(ticket_id, body.token, body.counter_id, body.nonce)

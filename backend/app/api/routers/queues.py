@@ -67,3 +67,20 @@ async def call_next(
     c=Depends(get_container),
 ):
     return await c.staff.call_next(staff, queue_id, body.counter_id if body else None)
+
+
+@router.get("/queues/{queue_id}/qr")
+async def join_qr(queue_id: int, admin=Depends(require_role("admin")), c=Depends(get_container)):
+    return await c.queues.join_qr(admin, queue_id)
+
+
+@router.get("/counters/{counter_id}/nonce")
+async def counter_nonce(
+    counter_id: int, staff=Depends(get_current_staff), c=Depends(get_container)
+):
+    return await c.queues.counter_nonce(staff, counter_id)
+
+
+@router.get("/queues/{queue_id}/stats")
+async def stats(queue_id: int, admin=Depends(require_role("admin")), c=Depends(get_container)):
+    return await c.queues.stats(admin, queue_id)

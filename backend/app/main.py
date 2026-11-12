@@ -4,11 +4,13 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routers import auth, queues, tickets, ws
 from app.container import build_container
@@ -72,4 +74,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     for module in (auth, queues, tickets, ws):
         app.include_router(module.router)
+
+    if settings.static_dir:  # Docker: serve the built React app from the same origin
+        static = Path(settings.static_dir)
+        app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")
+
+        @app.get("/{path:path}", include_in_schema=False)
+        async def spa(path: str):
+            if path.startswith(("api/", "ws/")):
+                return JSONResponse(error_body("NOT_FOUND", "Not found."), status_code=404)
+            return FileResponse(static / "index.html")
+
     return app

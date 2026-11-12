@@ -31,7 +31,9 @@ async def live_server(settings):
     app = create_app(settings)
     port = _free_port()
     server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", ws="websockets-sansio")
+        uvicorn.Config(
+            app, host="127.0.0.1", port=port, log_level="warning", ws="websockets-sansio"
+        )
     )
     task = asyncio.create_task(server.serve())
     while not server.started:
