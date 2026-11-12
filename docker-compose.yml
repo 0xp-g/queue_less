@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: queueless
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 30
+
+  api:
+    build: .
+    environment:
+      QL_DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/queueless
+      QL_REDIS_URL: redis://redis:6379/0
+      QL_PUBLIC_BASE_URL: ${QL_PUBLIC_BASE_URL:-http://localhost:8000}
+      QL_JWT_SECRET: ${QL_JWT_SECRET:-change-me-in-production-jwt-secret}
+      QL_TOKEN_SECRET: ${QL_TOKEN_SECRET:-change-me-in-production-token-secret}
+      QL_JOIN_RATE_LIMIT_PER_MIN: ${QL_JOIN_RATE_LIMIT_PER_MIN:-30}
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+volumes:
+  pgdata:
