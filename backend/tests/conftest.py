@@ -57,3 +57,28 @@ async def engine(settings):
 @pytest.fixture
 def session_factory(engine):
     return build_session_factory(engine)
+
+
+# --- API fixtures ------------------------------------------------------------------------------
+import httpx  # noqa: E402
+
+from app.main import create_app  # noqa: E402
+
+
+@pytest.fixture
+async def app(settings, engine):
+    application = create_app(settings)
+    async with application.router.lifespan_context(application):
+        yield application
+
+
+@pytest.fixture
+async def client(app):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest.fixture
+def container(app):
+    return app.state.container

@@ -150,7 +150,7 @@ sequenceDiagram
 | Asset | Mechanism | ADR |
 |---|---|---|
 | Join QR | `HMAC-SHA256(daily_key, queue_id \| date)`; accepts today's and yesterday's key (midnight grace) | [0004](adr/0004-qr-token-design.md) |
-| Ticket ownership | 128-bit random token from `secrets.token_urlsafe(16)`; **only its SHA-256 is stored** | [0004](adr/0004-qr-token-design.md) |
+| Ticket ownership | 128-bit token `HMAC(secret, queue_id \| client_request_id)`, so a retried join returns the *same* token; **only its SHA-256 is stored** | [0004](adr/0004-qr-token-design.md) |
 | Counter check-in | `HMAC(key, counter_id \| 30 s window)`; accepts current and previous window | [0004](adr/0004-qr-token-design.md) |
 | Staff | JWT (HS256, 60 min) with `sub`, `venue_id`, `role`; the user is **reloaded from the DB** on every request so deactivation takes effect immediately | [0009](adr/0009-staff-jwt-venue-scope.md) |
 | Tenant isolation | Every staff query is filtered by `venue_id` from the authenticated user, never from the request body | [0009](adr/0009-staff-jwt-venue-scope.md) |
@@ -306,12 +306,11 @@ RETURNING id, queue_id;
 classDiagram
   class EtaEstimator {
     <<abstract>>
-    +update(observed_sec) float
-    +eta(people_ahead, active_counters) float
+    +update(current_estimate, observed_sec) float
+    +eta(position, service_sec, active_counters, busy_counters) float
   }
   class EwmaEstimator {
     -alpha: float
-    -estimate: float
   }
   class FixedEstimator
   EtaEstimator <|-- EwmaEstimator
@@ -388,7 +387,7 @@ classDiagram
 | Class | Single responsibility | Collaborators |
 |---|---|---|
 | `TicketStateMachine` | Knows which transitions are legal | — (pure) |
-| `EwmaEstimator` | Keeps a rolling service-time estimate and computes ETA | — (pure) |
+| `EwmaEstimator` | Folds one observation into the estimate and computes ETA. **Stateless**: the estimate lives in `queues.est_service_sec`, so all instances share it and it's updated under the queue row lock | — (pure) |
 | `TokenSigner` | HMAC sign/verify with constant-time compare | — (pure) |
 | `JoinTokenService` / `CounterNonceService` | Token formats and rotation windows | `TokenSigner` |
 | `QueueRepository` / `TicketRepository` / `EventRepository` | All SQL, including locking queries | SQLAlchemy session |
@@ -462,7 +461,7 @@ classDiagram
 
 ### B10. ETA model
 
-* `ETA = (people_ahead + 1) × est_service_sec ÷ max(1, active_counters)`
+* `ETA = (position − free_counters) × est_service_sec ÷ max(1, active_counters)`, where `free_counters = active − busy (called/serving)`. If `position ≤ free_counters`, the ETA is 0 because an idle counter takes you now. With every counter busy, this is the blueprint formula `(people_ahead + 1) × est ÷ counters`.
 * `est ← α·observed + (1−α)·est` on every `complete`, with α = 0.2 by default (configurable). Observed time is `served_at − called_at`.
 * Cold start: `est = default_service_sec` until the first observation.
 * Measurement: `eta_at_join_sec` vs the actual `called_at − joined_at`, excluding waits under 5 s. Reported as median and mean APE in `/stats` and the load test ([ADR-0007](adr/0007-ewma-eta-estimator.md)).
