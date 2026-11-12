@@ -1,5 +1,7 @@
 """FastAPI application factory."""
 
+import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -8,10 +10,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routers import auth, queues, tickets
+from app.api.routers import auth, queues, tickets, ws
 from app.container import build_container
 from app.core.config import Settings, get_settings
 from app.core.errors import DomainError
+from app.realtime.redis_listener import RedisEventListener
 
 log = logging.getLogger("queueless")
 
@@ -30,9 +33,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         container = build_container(settings)
         app.state.container = container
+        tasks: list[asyncio.Task] = []
+        if settings.event_transport == "redis":
+            listener = RedisEventListener(settings.redis_url, container.hub)
+            container.extras["listener"] = listener
+            tasks.append(asyncio.create_task(listener.run(), name="redis-listener"))
         try:
             yield
         finally:
+            for task in tasks:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
             await container.close()
 
     app = FastAPI(title="QueueLess", version="0.1.0", lifespan=lifespan)
@@ -58,6 +70,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health():
         return {"status": "ok"}
 
-    for module in (auth, queues, tickets):
+    for module in (auth, queues, tickets, ws):
         app.include_router(module.router)
     return app

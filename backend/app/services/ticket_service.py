@@ -107,6 +107,10 @@ class TicketService:
             snapshot["version"] = joined.version
         return {**snapshot, "token": token}, True
 
+    async def ticket_for_token(self, token: str) -> Ticket:
+        async with self._uow() as uow:
+            return await self._by_token(uow, token)
+
     async def status(self, token: str) -> dict:
         async with self._uow() as uow:
             ticket = await self._by_token(uow, token)

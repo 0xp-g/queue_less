@@ -16,6 +16,7 @@ from app.domain.estimator import EtaEstimator, build_estimator
 from app.domain.ticket_state import TicketStateMachine
 from app.domain.tokens import CounterNonceService, JoinTokenService, TicketTokens, TokenSigner
 from app.events.publisher import EventPublisher, InMemoryEventPublisher, RedisEventPublisher
+from app.realtime.hub import ConnectionManager
 from app.services.auth_service import AuthService
 from app.services.queue_service import QueueService
 from app.services.snapshot_service import SnapshotService
@@ -37,6 +38,7 @@ class Container:
     tickets: TicketService
     staff: StaffService
     queues: QueueService
+    hub: ConnectionManager
     extras: dict = field(default_factory=dict)
 
     def uow(self) -> UnitOfWork:
@@ -77,6 +79,10 @@ def build_container(settings: Settings) -> Container:
     def uow_factory() -> UnitOfWork:
         return UnitOfWork(session_factory, publisher)
 
+    hub = ConnectionManager(uow_factory, snapshots)
+    if isinstance(publisher, InMemoryEventPublisher):
+        publisher.subscribe(hub.on_event)  # single process: deliver locally, no Redis hop
+
     return Container(
         settings=settings,
         engine=engine,
@@ -98,4 +104,5 @@ def build_container(settings: Settings) -> Container:
             settings.public_base_url,
             settings.eta_error_min_wait_sec,
         ),
+        hub=hub,
     )

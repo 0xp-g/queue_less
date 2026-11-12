@@ -413,6 +413,7 @@ classDiagram
 | **Observer / Pub-Sub** | `EventPublisher` → Redis → `ConnectionManager` → sockets | Producers don't know who listens; instances scale horizontally |
 | **Adapter** | `RedisEventPublisher`, `InMemoryEventPublisher` | Same interface over different transports; tests run without Redis |
 | **Dependency Injection** | FastAPI `Depends` (`get_current_staff`, `require_role("admin")`, services) | Auth and venue scoping are declared per route; easy to override in tests |
+| **Coalescing (debounce)** | `ConnectionManager._refresh_loop` | A burst of events for one queue triggers at most one in-flight refresh plus one follow-up, not one query per event |
 | **Idempotency key** | `client_request_id` + unique constraint | Safe network retries |
 | **Compare-and-set** | `UPDATE ... WHERE status = :expected` | Lock-free race detection on transitions |
 | **Event log / audit** | `queue_events` (append-only) | Audit trail, stats, and offline replay to tune α |
